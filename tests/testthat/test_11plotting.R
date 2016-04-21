@@ -20,8 +20,8 @@ rownames(map) <- rownames(geno)
 snps <- new("SnpSet", call = geno, featureData = map)
 
 multiset <- new("MultiDataSet")
-multiset <- add.methy(multiset, set)
-multiset <- add.snps(multiset, snps)
+multiset <- add_methy(multiset, set)
+multiset <- add_snps(multiset, snps)
 rangeSNPsCov <- DARegionAnalysis(multiset, variable_names = "sex", range = range, 
                                     snps_cutoff = 0.05)
 
@@ -33,8 +33,8 @@ pData(eset) <- data.frame(sex = c("H", "M", "H", "M"))
 esetRes <- DAPipeline(eset, variable_names = "sex", probe_method = "ls")
 
 test_that("Plot CPGs",{
-  expect_error(plotFeature(methyOneVar, 12351413654), "feat index must be greater than 0 and smaller than the number of cpgs.")
-  expect_error(plotFeature(methyOneVar, -12), "feat index must be greater than 0 and smaller than the number of cpgs.")
+  expect_error(plotFeature(methyOneVar, 12351413654), "feat index must be greater than 0 and smaller than the number of features.")
+  expect_error(plotFeature(methyOneVar, -12), "feat index must be greater than 0 and smaller than the number of features.")
   expect_error(plotFeature(methyOneVar, 1, variables = character()), "variables must have one or two values.")
   expect_error(plotFeature(methyOneVar, 1, variables = "character"),"Not all variables are present in set phenodata.")
   expect_error(plotFeature(methyOneVar, 1, variables = c("age", "sex", "status")), "variables must have one or two values.")
@@ -70,13 +70,13 @@ test_that("QQPlot", {
 
 test_that("plotRDA", {
   expect_error(plotRDA(rangeNoSNPs, n_feat = -1), "n_feat must be greater than 1.")
-  expect_warning(plotRDA(rangeNoSNPs, n_feat = 9999), "n_feat is greater than the total number of cpgs in the range.")
+  expect_warning(plotRDA(rangeNoSNPs, n_feat = 9999), "n_feat is greater than the total number of features in the range.")
 })
 
 test_that("Plot Region", {
   expect_error(plotRegion(rangeNoSNPs, variable = character()), "variable must have one value.")
   expect_error(plotRegion(rangeNoSNPs, variable = c("a", "b")), "variable must have one value.")
-  expect_error(plotRegion(rangeNoSNPs, variable = "a"), "Variable is not present in modelVariables.\nValid variables are sex.")
+  expect_error(plotRegion(rangeNoSNPs, variable = "a"), "Variable is not present in modelVariables.\nValid variables are sex")
   expect_error(plotRegion(methyOneVar), "range must be present to use plotRegion with a AnalysisResults")
   expect_error(plotRegion(esetRes), "Results must have a column called position to perform this plot.")
   plotRegion(rangeNoSNPs)
