@@ -20,6 +20,8 @@
 #' @param num_cores Numeric with the number of cores used to perform the permutation.
 #' @param verbose Logical value. If TRUE, it writes out some messages indicating progress. 
 #' If FALSE nothing should be printed.
+#' @param lambda Parameter of the gaussian kernel of \code{DMRcate}
+#' @param C Parameter of the scaling factor for bandwidth of \code{DMRcate}
 #' @param ... Further arguments passsed to \code{bumphunter} function.
 #' @return List with the main results of the three methods. If a method is not
 #' chosen, NA is returned in this position. 
@@ -66,138 +68,140 @@
 
 DARegion <- function (set, model, methods = c("blockFinder", "bumphunter", "DMRcate"), 
                       coefficient = 2, num_permutations = 0, bumphunter_cutoff = 0.05, 
-                      bumps_max = 30000, num_cores = 1, verbose = FALSE, ...)
+                      bumps_max = 30000, num_cores = 1, verbose = FALSE, 
+                      lambda = 1000, C = 2, ...)
 {
-  if (!is(set, "MethylationSet")){
-    stop("set must be a MethylationSet.")
-  }
-  if (sum(methods %in% c("blockFinder", "bumphunter", "DMRcate", "none")) == 0){
-    stop("Method variable is empty or none of the methods introduced is valid.")
-  }
-  if (nrow(set) == 0 | ncol(set) == 0){
-    stop("The set is empty.")
-  }
-  if (nrow(model) == 0 | ncol(set) == 0){
-    stop("The model matrix is empty.")
-  }
-  if (ncol(set) != nrow(model)){
-    stop("The number of samples is different in the set and in the model.")
-  }
-
-  if (length(coefficient) > 1){
-    regions <- lapply(coefficient, 
-                      function(x) DARegion(set = set, model = model, methods = methods, 
-                                           coefficient = x,                                            num_permutations = num_permutations, 
-                                           bumphunter_cutoff = bumphunter_cutoff,
-                                           bumps_max = bumps_max, num_cores = num_cores, 
-                                           verbose = verbose, ...))
-    names(regions) <- colnames(model)[coefficient]
-    return(regions)
-  }
-  #Activate parallelization
-  if (num_cores > 1){
-    doParallel::registerDoParallel(cores = num_cores)
-  }
-  dmrs <- list()
-  if("bumphunter" %in% methods){
-    mat <- betas(set)
-    annot <- fData(set)
-    Bumphunter <-  minfi::bumphunter(object = mat, design = model, coef = coefficient,
-                                     chr = annot[, "chromosome"], pos = annot[, "position"],
-                                     cutoff = bumphunter_cutoff, 
-                                     nullMethod = "bootstrap", verbose = verbose, ...)$table
-    
-    #Assure that permutations are applied to a reasonable number of bumps
-    if (num_permutations > 0){
-      i <- 1
-      while(nrow(Bumphunter) > bumps_max){
-        if (verbose){
-          message(paste("Iteration",i,"Num bumps:", nrow(Bumphunter), 
-                        "cutoff:", bumphunter_cutoff))
+        if (!is(set, "MethylationSet")){
+                stop("set must be a MethylationSet.")
         }
-        bumphunter_cutoff <- bumphunter_cutoff + 0.05
-        Bumphunter <-  minfi::bumphunter(object = mat, design = model, coef = coefficient,
-                                         chr = annot[ , "chromosome"], pos = annot[, "position"],
-                                         cutoff = bumphunter_cutoff, B = 0, 
-                                         nullMethod = "bootstrap", verbose = verbose, ...)$table
-        i <- i +1
-      }
-      if (verbose){
-        message(paste("Iteration",i,"Num bumps:", nrow(Bumphunter), 
-                      "cutoff:", bumphunter_cutoff))
-      }
-      Bumphunter <-  minfi::bumphunter(object = mat, design = model, coef = coefficient,
-                                       chr = annot[, "chromosome"], pos = annot[, "position"],
-                                       cutoff = bumphunter_cutoff, B = num_permutations, 
-                                       nullMethod = "bootstrap", verbose = verbose, ...)$table
-    } 
-    if (length(Bumphunter) == 1){
-      Bumphunter <- data.frame()
-    }
-    dmrs[["bumphunter"]] <- Bumphunter
-  }else{
-    dmrs[["bumphunter"]] <- NA
-  }
-  if("blockFinder" %in% methods){
-    #Create a GenomicRatioSet from minfi to run cpgCollapse
-    granges <- fData(set)[, c("chromosome", "position", "position")]
-    granges <- createRanges(granges)
-    beta <- betas(set)
-    minfiset <- minfi::GenomicRatioSet(gr = granges, Beta = beta, pData = pData(set),
-                                       CN = matrix(1, ncol = ncol(beta), nrow = nrow(beta)),
-                                       annotation = c(array = "IlluminaHumanMethylation450k",
-                                                      annotation = "ilmn12.hg19"))
-    blockset <- minfi::cpgCollapse(minfiset, returnBlockInfo = FALSE, verbose = verbose )
-    blockfinder <- tryCatch(minfi::blockFinder(blockset, design = model, coef = coefficient,
-                                               cutoff = bumphunter_cutoff, nullMethod = "bootstrap",
-                                               verbose = verbose, ...)$table, 
-                            error = function(e) NULL)
-    if (is.null(blockfinder)){
-      blockfinder <- data.frame()
-      dmrs[["blockFinder"]] <- blockfinder
-    }else{
-      
-      #Assure that permutations are applied to a reasonable number of bumps
-      if (num_permutations){
-        i <- 1
-        while(nrow(blockfinder) > bumps_max){
-          message(paste("Iteration",i,"Num bumps:", nrow(blockfinder), 
-                        "cutoff:", bumphunter_cutoff))
-          bumphunter_cutoff <- bumphunter_cutoff + 0.05
-          blockfinder <- minfi::blockFinder(blockset, design = model, coef = coefficient, 
-                                            cutoff = bumphunter_cutoff, B = 0, 
-                                            verbose = verbose, ...)$table
-          i <- i +1
+        if (sum(methods %in% c("blockFinder", "bumphunter", "DMRcate", "none")) == 0){
+                stop("Method variable is empty or none of the methods introduced is valid.")
         }
-        if (verbose){
-          message(paste("Iteration",i,"Num bumps:", nrow(blockfinder), 
-                        "cutoff:", bumphunter_cutoff))
+        if (nrow(set) == 0 | ncol(set) == 0){
+                stop("The set is empty.")
         }
-        blockfinder  <- minfi::blockFinder(blockset, design = model, coef = coefficient,
-                                           cutoff = bumphunter_cutoff, B = num_permutations, 
-                                           nullMethod = "bootstrap",
-                                           verbose = verbose, ...)$table
-      } 
-      if (length(blockfinder) == 1){
-        blockfinder <- data.frame()
-      }
-      dmrs[["blockFinder"]] <- blockfinder
-    }
-  }else{
-    dmrs[["blockFinder"]] <- NA
-  }
-  if("DMRcate" %in% methods){
-    myannotation <- DMRcate::cpg.annotate(datatype = "array", object = MultiDataSet::getMs(set), 
-                                          design = model, coef = coefficient)
-    dmrcoutput <- tryCatch(DMRcate::dmrcate(myannotation, lambda = 1000, C = 2), 
-                           error = function(e) NULL)
-    if (is.null(dmrcoutput)){
-      dmrs[["DMRcate"]] <-  data.frame()
-    }else {
-      dmrs[["DMRcate"]] <- dmrcoutput$results
-    }
-  }else{
-    dmrs[["DMRcate"]] <- NA
-  }
-  dmrs
+        if (nrow(model) == 0 | ncol(set) == 0){
+                stop("The model matrix is empty.")
+        }
+        if (ncol(set) != nrow(model)){
+                stop("The number of samples is different in the set and in the model.")
+        }
+        
+        if (length(coefficient) > 1){
+                regions <- lapply(coefficient, 
+                                  function(x) DARegion(set = set, model = model, methods = methods, 
+                                                       coefficient = x,                                            num_permutations = num_permutations, 
+                                                       bumphunter_cutoff = bumphunter_cutoff,
+                                                       bumps_max = bumps_max, num_cores = num_cores, 
+                                                       verbose = verbose, ...))
+                names(regions) <- colnames(model)[coefficient]
+                return(regions)
+        }
+        #Activate parallelization
+        if (num_cores > 1){
+                doParallel::registerDoParallel(cores = num_cores)
+        }
+        dmrs <- list()
+        if("bumphunter" %in% methods){
+                mat <- betas(set)
+                annot <- fData(set)
+                Bumphunter <-  minfi::bumphunter(object = mat, design = model, coef = coefficient,
+                                                 chr = annot[, "chromosome"], pos = annot[, "position"],
+                                                 cutoff = bumphunter_cutoff, 
+                                                 nullMethod = "bootstrap", verbose = verbose, ...)$table
+                
+                #Assure that permutations are applied to a reasonable number of bumps
+                if (num_permutations > 0){
+                        i <- 1
+                        while(nrow(Bumphunter) > bumps_max){
+                                if (verbose){
+                                        message(paste("Iteration",i,"Num bumps:", nrow(Bumphunter), 
+                                                      "cutoff:", bumphunter_cutoff))
+                                }
+                                bumphunter_cutoff <- bumphunter_cutoff + 0.05
+                                Bumphunter <-  minfi::bumphunter(object = mat, design = model, coef = coefficient,
+                                                                 chr = annot[ , "chromosome"], pos = annot[, "position"],
+                                                                 cutoff = bumphunter_cutoff, B = 0, 
+                                                                 nullMethod = "bootstrap", verbose = verbose, ...)$table
+                                i <- i +1
+                        }
+                        if (verbose){
+                                message(paste("Iteration",i,"Num bumps:", nrow(Bumphunter), 
+                                              "cutoff:", bumphunter_cutoff))
+                        }
+                        Bumphunter <-  minfi::bumphunter(object = mat, design = model, coef = coefficient,
+                                                         chr = annot[, "chromosome"], pos = annot[, "position"],
+                                                         cutoff = bumphunter_cutoff, B = num_permutations, 
+                                                         nullMethod = "bootstrap", verbose = verbose, ...)$table
+                } 
+                if (length(Bumphunter) == 1){
+                        Bumphunter <- data.frame()
+                }
+                dmrs[["bumphunter"]] <- Bumphunter
+        }else{
+                dmrs[["bumphunter"]] <- NA
+        }
+        if("blockFinder" %in% methods){
+                #Create a GenomicRatioSet from minfi to run cpgCollapse
+                granges <- fData(set)[, c("chromosome", "position", "position")]
+                granges <- createRanges(granges)
+                beta <- betas(set)
+                minfiset <- minfi::GenomicRatioSet(gr = granges, Beta = beta, pData = pData(set),
+                                                   CN = matrix(1, ncol = ncol(beta), nrow = nrow(beta)),
+                                                   annotation = c(array = "IlluminaHumanMethylation450k",
+                                                                  annotation = "ilmn12.hg19"))
+                blockset <- minfi::cpgCollapse(minfiset, returnBlockInfo = FALSE, verbose = verbose )
+                blockfinder <- tryCatch(minfi::blockFinder(blockset, design = model, coef = coefficient,
+                                                           cutoff = bumphunter_cutoff, nullMethod = "bootstrap",
+                                                           verbose = verbose, ...)$table, 
+                                        error = function(e) NULL)
+                if (is.null(blockfinder)){
+                        blockfinder <- data.frame()
+                        dmrs[["blockFinder"]] <- blockfinder
+                }else{
+                        
+                        #Assure that permutations are applied to a reasonable number of bumps
+                        if (num_permutations){
+                                i <- 1
+                                while(nrow(blockfinder) > bumps_max){
+                                        message(paste("Iteration",i,"Num bumps:", nrow(blockfinder), 
+                                                      "cutoff:", bumphunter_cutoff))
+                                        bumphunter_cutoff <- bumphunter_cutoff + 0.05
+                                        blockfinder <- minfi::blockFinder(blockset, design = model, coef = coefficient, 
+                                                                          cutoff = bumphunter_cutoff, B = 0, 
+                                                                          verbose = verbose, ...)$table
+                                        i <- i +1
+                                }
+                                if (verbose){
+                                        message(paste("Iteration",i,"Num bumps:", nrow(blockfinder), 
+                                                      "cutoff:", bumphunter_cutoff))
+                                }
+                                blockfinder  <- minfi::blockFinder(blockset, design = model, coef = coefficient,
+                                                                   cutoff = bumphunter_cutoff, B = num_permutations, 
+                                                                   nullMethod = "bootstrap",
+                                                                   verbose = verbose, ...)$table
+                        } 
+                        if (length(blockfinder) == 1){
+                                blockfinder <- data.frame()
+                        }
+                        dmrs[["blockFinder"]] <- blockfinder
+                }
+        }else{
+                dmrs[["blockFinder"]] <- NA
+        }
+        if("DMRcate" %in% methods){
+                myannotation <- DMRcate::cpg.annotate(datatype = "array", object = MultiDataSet::betas(set), 
+                                                      arraytype = "450K", design = model, 
+                                                      coef = coefficient)
+                dmrcoutput <- tryCatch(DMRcate::dmrcate(myannotation, lambda = lambda, C = C), 
+                                       error = function(e) NULL)
+                if (is.null(dmrcoutput)){
+                        dmrs[["DMRcate"]] <-  data.frame()
+                }else {
+                        dmrs[["DMRcate"]] <- dmrcoutput$results
+                }
+        }else{
+                dmrs[["DMRcate"]] <- NA
+        }
+        dmrs
 }
