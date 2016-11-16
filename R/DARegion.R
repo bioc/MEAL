@@ -20,8 +20,6 @@
 #' @param num_cores Numeric with the number of cores used to perform the permutation.
 #' @param verbose Logical value. If TRUE, it writes out some messages indicating progress. 
 #' If FALSE nothing should be printed.
-#' @param lambda Parameter of the gaussian kernel of \code{DMRcate}
-#' @param C Parameter of the scaling factor for bandwidth of \code{DMRcate}
 #' @param ... Further arguments passsed to \code{bumphunter} function.
 #' @return List with the main results of the three methods. If a method is not
 #' chosen, NA is returned in this position. 
@@ -68,8 +66,7 @@
 
 DARegion <- function (set, model, methods = c("blockFinder", "bumphunter", "DMRcate"), 
                       coefficient = 2, num_permutations = 0, bumphunter_cutoff = 0.05, 
-                      bumps_max = 30000, num_cores = 1, verbose = FALSE, 
-                      lambda = 1000, C = 2, ...)
+                      bumps_max = 30000, num_cores = 1, verbose = FALSE, ...)
 {
         if (!is(set, "MethylationSet")){
                 stop("set must be a MethylationSet.")
@@ -193,7 +190,7 @@ DARegion <- function (set, model, methods = c("blockFinder", "bumphunter", "DMRc
                 myannotation <- DMRcate::cpg.annotate(datatype = "array", object = MultiDataSet::betas(set), 
                                                       arraytype = "450K", design = model, 
                                                       coef = coefficient)
-                dmrcoutput <- tryCatch(DMRcate::dmrcate(myannotation, lambda = lambda, C = C), 
+                dmrcoutput <- tryCatch(DMRcate::dmrcate(myannotation, lambda = 1000, C = 2), 
                                        error = function(e) NULL)
                 if (is.null(dmrcoutput)){
                         dmrs[["DMRcate"]] <-  data.frame()

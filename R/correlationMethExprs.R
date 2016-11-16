@@ -12,6 +12,8 @@
 #' 
 #' @export correlationMethExprs
 #' 
+#' @aliases Defunct
+#' 
 #' @param multiset \code{MultiDataSet} containing a \code{methylation} and an 
 #' \code{expression} slots.
 #' @param vars_meth Character vector with the names of the variables that will be
